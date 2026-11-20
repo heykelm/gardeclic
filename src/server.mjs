@@ -11,6 +11,7 @@ import {
   appendHit,
   ensureData,
   loadBlocks,
+  loadExtraCidrs,
   loadHits,
   loadSites,
   pruneHits,
@@ -113,8 +114,9 @@ function dashboardPage(origin, keyQuery) {
 </head>
 <body>
   <h1>GardeClic</h1>
-  <p class="muted">Règles lisibles · plusieurs sites · pas un clone ClickCease.</p>
+  <p class="muted">Garde les campagnes Ads : clics payants, plusieurs sites, règles nommées.</p>
   <p>Snippet : <code>&lt;script src="${origin}/s.js" data-site="TON_ID"&gt;&lt;/script&gt;</code></p>
+  <p id="rules" class="muted"></p>
   <p><a href="/export.csv${keyQuery}">Export CSV des IP</a>
     · <a href="/api/sync${keyQuery}" id="sync">Sync Ads</a></p>
   <form id="manual" style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
@@ -128,12 +130,17 @@ function dashboardPage(origin, keyQuery) {
   <table id="sites"><thead><tr><th>id</th><th>host</th><th>Ads</th></tr></thead><tbody></tbody></table>
   <h2>Exclusions</h2>
   <table id="blocks"><thead><tr><th>IP</th><th>raisons</th><th>sites</th><th>sync Ads</th></tr></thead><tbody></tbody></table>
+  <h2>Derniers clics payants</h2>
+  <table id="hits"><thead><tr><th>quand</th><th>IP</th><th>site</th><th>UA</th></tr></thead><tbody></tbody></table>
   <script>
     const q = ${JSON.stringify(keyQuery)};
     Promise.all([
       fetch("/api/sites" + q).then((r) => r.json()),
-      fetch("/api/blocks" + q).then((r) => r.json())
-    ]).then(([sites, blocks]) => {
+      fetch("/api/blocks" + q).then((r) => r.json()),
+      fetch("/api/hits" + q).then((r) => r.json()),
+      fetch("/api/rules" + q).then((r) => r.json())
+    ]).then(([sites, blocks, hits, rules]) => {
+      document.querySelector("#rules").textContent = "Règles actives : " + (rules.enabled || []).join(", ");
       document.querySelector("#sites tbody").innerHTML = sites.map((s) =>
         "<tr><td>" + s.id + "</td><td>" + s.host + "</td><td>" + (s.customerId ? "oui" : "—") + "</td></tr>"
       ).join("");
@@ -141,6 +148,11 @@ function dashboardPage(origin, keyQuery) {
         "<tr><td>" + b.ip + "</td><td>" + (b.reasons || []).join(", ") + "</td><td>" +
         (b.sites || []).join(", ") + "</td><td>" + (b.synced ? "oui" : "non") + "</td></tr>"
       ).join("") || "<tr><td colspan=4 class=muted>Aucune exclusion pour l’instant.</td></tr>";
+      const last = (hits || []).slice(-40).reverse();
+      document.querySelector("#hits tbody").innerHTML = last.map((h) =>
+        "<tr><td>" + new Date(h.at).toLocaleString() + "</td><td>" + h.ip + "</td><td>" +
+        h.site + "</td><td class=muted>" + String(h.ua || "").slice(0, 48) + "</td></tr>"
+      ).join("") || "<tr><td colspan=4 class=muted>Aucun clic payant pour l’instant.</td></tr>";
     });
     document.getElementById("manual").addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -181,13 +193,37 @@ async function alertIfNew(result, extra) {
   }).catch(() => {});
 }
 
-function ruleOptions() {
+function envOn(name, defaultOn = true) {
+  const value = process.env[name];
+  if (value == null || value === "") return defaultOn;
+  return value !== "0" && value !== "false";
+}
+
+async function ruleOptions() {
   return {
     windowMs: Number(process.env.GARDECLIC_WINDOW_HOURS ?? 24) * 60 * 60 * 1000,
     repeatLimit: Number(process.env.GARDECLIC_REPEAT_LIMIT ?? 4),
     networkSites: Number(process.env.GARDECLIC_NETWORK_SITES ?? 2),
-    useDatacenter: process.env.GARDECLIC_DATACENTER === "1",
+    burstLimit: Number(process.env.GARDECLIC_BURST_LIMIT ?? 3),
+    burstMs: Number(process.env.GARDECLIC_BURST_SECONDS ?? 120) * 1000,
+    uaChurnLimit: Number(process.env.GARDECLIC_UA_CHURN ?? 4),
+    useBurst: envOn("GARDECLIC_BURST"),
+    useClickIdReuse: envOn("GARDECLIC_CLICK_ID_REUSE"),
+    useBotUa: envOn("GARDECLIC_BOT_UA"),
+    useHosting: envOn("GARDECLIC_HOSTING") && process.env.GARDECLIC_DATACENTER !== "0",
+    useUaChurn: envOn("GARDECLIC_UA_CHURN_ON"),
+    extraCidrs: await loadExtraCidrs(),
   };
+}
+
+function enabledRuleNames(opts) {
+  const names = ["repeat_paid", "network_repeat"];
+  if (opts.useBurst) names.push("burst");
+  if (opts.useClickIdReuse) names.push("click_id_reuse");
+  if (opts.useBotUa) names.push("bot_ua");
+  if (opts.useHosting) names.push("hosting");
+  if (opts.useUaChurn) names.push("ua_churn");
+  return names;
 }
 
 const server = createServer(async (req, res) => {
@@ -244,10 +280,12 @@ const server = createServer(async (req, res) => {
         host: site.host,
         gclid: String(payload.gclid ?? "").slice(0, 200),
         href: String(payload.href ?? "").slice(0, 500),
+        referrer: String(payload.referrer ?? "").slice(0, 400),
+        ua: String(req.headers["user-agent"] ?? "").slice(0, 300),
       };
       await pruneHits(RETENTION_DAYS * 24 * 60 * 60 * 1000);
       const hits = await loadHits();
-      const verdict = evaluateHit(hit, [...hits, hit], ruleOptions());
+      const verdict = evaluateHit(hit, [...hits, hit], await ruleOptions());
       await appendHit(hit);
       if (verdict.flagged) {
         const result = await upsertBlock({
@@ -303,6 +341,14 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === "/api/sites") {
       json(res, 200, await loadSites());
+      return;
+    }
+    if (url.pathname === "/api/rules") {
+      const opts = await ruleOptions();
+      json(res, 200, {
+        enabled: enabledRuleNames(opts),
+        extraCidrs: opts.extraCidrs.length,
+      });
       return;
     }
     if (url.pathname === "/api/blocks" && req.method === "POST") {

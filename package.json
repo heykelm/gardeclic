@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": false,
   "license": "MIT",
-  "description": "GardeClic — exclusions IP Google Ads, règles lisibles, plusieurs sites. Self-host, gratuit.",
+  "description": "Self-hosted Google Ads click guard: named rules, multi-site, IP exclusions. MIT.",
   "type": "module",
   "engines": {
     "node": ">=20"

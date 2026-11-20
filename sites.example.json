@@ -7,26 +7,26 @@
       "campaignIds": ["24446333036"]
     },
     {
-      "id": "site-2",
-      "host": "exemple-2.fr",
-      "customerId": "1234567890",
-      "campaignIds": ["11111111111"]
-    },
-    {
-      "id": "site-3",
-      "host": "exemple-3.fr",
+      "id": "nicehub",
+      "host": "nicehub.example",
       "customerId": "",
       "campaignIds": []
     },
     {
-      "id": "site-4",
-      "host": "exemple-4.fr",
+      "id": "rideup",
+      "host": "rideup.example",
       "customerId": "",
       "campaignIds": []
     },
     {
-      "id": "site-5",
-      "host": "exemple-5.fr",
+      "id": "taxilimo",
+      "host": "taxilimo.example",
+      "customerId": "",
+      "campaignIds": []
+    },
+    {
+      "id": "nicetaxilimo",
+      "host": "nicetaxilimo.example",
       "customerId": "",
       "campaignIds": []
     }

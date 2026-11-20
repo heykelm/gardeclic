@@ -1,21 +1,26 @@
 # GardeClic
 
-A **free**, self-hosted guard for Google Ads clicks across several of your sites. It is **not** a ClickCease clone: no secret “2000 tests”, no paid SaaS, no fingerprinting.
+A **free**, self-hosted guard for Google Ads clicks across **your sites** — taxis, marketplaces, local services, whatever you ship. It is not a ClickCease clone: no secret score, no fingerprinting, no paid quota.
 
-You run one instance. Your sites send **paid clicks only** (`gclid` / `gbraid` / `wbraid`) plus the IP your server sees. A few **readable rules** decide whether that IP should be excluded. You export a CSV, or you connect the Google Ads API if you have a token.
+You run one instance. Each site sends **paid clicks only** (`gclid` / `gbraid` / `wbraid`) plus the IP and user-agent your server sees. Named rules decide whether that IP is burning Ads spend. You get an email, a CSV, or a Google Ads IP exclusion.
 
-## What it does
+Google Ads **does not give you the click IP**. That is why the collector sits on the landing page. Google’s cap: 500 IPs per campaign.
 
-1. **First-party beacon** — the snippet fires only when an Ads click id is present.
-2. **Three rules**, in `src/rules.mjs`:
-   - `repeat_paid`: too many paid clicks from the same IP in the window (default 4 / 24 h)
-   - `network_repeat`: the same IP clicks **more than one of your sites** (competitor / click farm)
-   - `datacenter`: hosting prefixes — **off** by default (too broad)
-3. **Multi-site** via `data/sites.json` (copied from `sites.example.json` on first start).
-4. **Admin alert**: one email (Resend) and/or webhook when a **new** IP is flagged — not on every later click. Without `GARDECLIC_ALERT_EMAIL`, nobody is notified; you have to open the dashboard.
-5. **Optional Google Ads sync**: IP exclusions on your campaigns. Without a token, the CSV export is enough.
+## What it flags
 
-Google Ads **does not give you the click IP**. That is why there is a small collector on your landing pages. Google’s cap: 500 IPs per campaign.
+Rules live in `src/rules.mjs`. Each one has a name you can turn off in `.env`.
+
+| Rule | Meaning |
+| --- | --- |
+| `repeat_paid` | Too many paid clicks from one IP in the window (default 4 / 24 h) |
+| `network_repeat` | Same IP hits **several of your sites** (farm / competitor) |
+| `burst` | Too many paid clicks in a short burst (default 3 / 2 min) |
+| `click_id_reuse` | The same Ads click id shows up from **two IPs** (replay / sharing) |
+| `bot_ua` | Empty or automation user-agent (`curl`, headless, scrapers…) |
+| `hosting` | IP in cloud / hosting ranges (AWS, GCP, Azure, OVH, Hetzner, DO…) |
+| `ua_churn` | Too many different browsers from one IP in the window |
+
+Add extra hosting/VPN CIDRs in `data/hosting.cidrs` (see `hosting.cidrs.example`). This is a public-range heuristic, not a commercial IP-intel feed.
 
 ## Run it
 
@@ -24,7 +29,7 @@ cp .env.example .env
 npm start
 ```
 
-`data/sites.json` is created for you. Open `http://localhost:8787/?key=your-key`.
+`data/sites.json` is created from `sites.example.json`. Put every property there (`nicehub`, `rideup`, `taxilimo`, `serru24`, …) with its Google Ads customer and campaign ids. Open `http://localhost:8787/?key=your-key`.
 
 Docker:
 
@@ -33,23 +38,25 @@ docker build -t gardeclic .
 docker run --rm -p 8787:8787 --env-file .env -v gardeclic-data:/app/data gardeclic
 ```
 
-Render / Railway / Fly: `Procfile` and `Dockerfile` are ready. Persist a volume on `/app/data`.
-
 On each site:
 
 ```html
-<script src="https://YOUR-INSTANCE/s.js" data-site="site-1"></script>
+<script src="https://YOUR-INSTANCE/s.js" data-site="rideup"></script>
 ```
 
-`data-site` is the `id` in `sites.json`. Set `customerId` and `campaignIds` if you want Ads sync.
+`data-site` is the `id` in `sites.json`.
+
+## Alerts
+
+One email (Resend) and/or webhook when a **new** IP is flagged — not on every later click. Set `GARDECLIC_ALERT_EMAIL` + `RESEND_API_KEY`, or `GARDECLIC_WEBHOOK_URL`.
 
 ## Free for everyone
 
-MIT license. Everyone runs **their own** instance (VPS, Railway, Fly, Node on a Pi). No quotas for sale. Your data stays on your disk (`data/` is not committed).
+MIT license. Everyone runs **their own** instance. Your hits stay on your disk (`data/` is not committed).
 
-## What it is not
+## What it does not do
 
-Not a magic ClickCease replacement, not a blunt 4G blocker (a shared mobile IP can be a real customer). Stay conservative on local trades (locksmith, emergency call-outs, and the like).
+It does not fingerprint devices, it does not force Google to refund a click, and it does not see other advertisers’ traffic. Cross-site signal is **your** network of sites, which is the point of running one instance for the whole catalogue.
 
 ## Tests
 

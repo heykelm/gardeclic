@@ -1,0 +1,3 @@
+# Extra hosting / VPN / proxy CIDRs, one per line.
+# Copy to data/hosting.cidrs on the instance.
+# 198.51.100.0/24

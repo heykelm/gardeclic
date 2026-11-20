@@ -87,6 +87,18 @@ export async function upsertBlock(entry) {
   };
 }
 
+export async function loadExtraCidrs() {
+  try {
+    const raw = await readFile(path.join(DATA, "hosting.cidrs"), "utf8");
+    return raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"));
+  } catch {
+    return [];
+  }
+}
+
 export async function pruneHits(maxAgeMs) {
   const hits = await loadHits();
   const cutoff = Date.now() - maxAgeMs;

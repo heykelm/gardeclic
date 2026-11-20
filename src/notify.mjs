@@ -7,7 +7,12 @@ function reasonLabel(reason) {
   return {
     repeat_paid: "trop de clics payants depuis la même IP",
     network_repeat: "même IP sur plusieurs de tes sites",
-    datacenter: "IP d’hébergeur / datacenter",
+    burst: "rafale de clics payants trop rapides",
+    click_id_reuse: "même identifiant de clic Ads vu depuis plusieurs IP",
+    bot_ua: "user-agent automate ou vide",
+    hosting: "IP d’hébergeur / cloud",
+    datacenter: "IP d’hébergeur / cloud",
+    ua_churn: "trop de navigateurs différents depuis la même IP",
     manual: "exclusion manuelle",
   }[reason] ?? reason;
 }
