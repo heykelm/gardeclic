@@ -1,55 +1,55 @@
 # GardeClic
 
-Outil **gratuit**, self-host, pour plusieurs sites Google Ads. Ce n’est **pas** un clone de ClickCease : pas de 2000 tests secrets, pas de SaaS payant, pas de fingerprint.
+A **free**, self-hosted guard for Google Ads clicks across several of your sites. It is **not** a ClickCease clone: no secret “2000 tests”, no paid SaaS, no fingerprinting.
 
-Tu héberges une instance. Tes sites envoient uniquement les **clics payants** (`gclid` / `gbraid` / `wbraid`) + l’IP vue par ton serveur. Des **règles lisibles** décident d’exclure l’IP. Tu exportes un CSV, ou tu branches l’API Google Ads si tu as un token.
+You run one instance. Your sites send **paid clicks only** (`gclid` / `gbraid` / `wbraid`) plus the IP your server sees. A few **readable rules** decide whether that IP should be excluded. You export a CSV, or you connect the Google Ads API if you have a token.
 
-## Ce que ça fait
+## What it does
 
-1. **Beacon first-party** — le snippet ne part que s’il y a un identifiant de clic Ads.
-2. **Trois règles**, dans `src/rules.mjs` :
-   - `repeat_paid` : trop de clics payants de la même IP dans la fenêtre (défaut 4 / 24 h)
-   - `network_repeat` : la même IP clique **plusieurs de tes sites** (le cas concurrent / ferme)
-   - `datacenter` : préfixes hébergeur, **off** par défaut (trop large)
-3. **Multi-sites** via `data/sites.json` (copie de `sites.example.json`).
-4. **Alerte admin** : un e-mail (Resend) et/ou un webhook dès qu’une **nouvelle** IP est flaggée — pas à chaque clic suivant. Sans `GARDECLIC_ALERT_EMAIL`, personne n’est prévenu : il faut ouvrir le tableau de bord.
-5. **Google Ads** optionnel : exclusions IP sur tes campagnes. Sans token, l’export CSV suffit.
+1. **First-party beacon** — the snippet fires only when an Ads click id is present.
+2. **Three rules**, in `src/rules.mjs`:
+   - `repeat_paid`: too many paid clicks from the same IP in the window (default 4 / 24 h)
+   - `network_repeat`: the same IP clicks **more than one of your sites** (competitor / click farm)
+   - `datacenter`: hosting prefixes — **off** by default (too broad)
+3. **Multi-site** via `data/sites.json` (copied from `sites.example.json` on first start).
+4. **Admin alert**: one email (Resend) and/or webhook when a **new** IP is flagged — not on every later click. Without `GARDECLIC_ALERT_EMAIL`, nobody is notified; you have to open the dashboard.
+5. **Optional Google Ads sync**: IP exclusions on your campaigns. Without a token, the CSV export is enough.
 
-Google Ads **ne donne pas l’IP du clic**. D’où le petit collecteur sur tes landings. Plafond Google : 500 IP par campagne.
+Google Ads **does not give you the click IP**. That is why there is a small collector on your landing pages. Google’s cap: 500 IPs per campaign.
 
-## Lancer
+## Run it
 
 ```bash
 cp .env.example .env
 npm start
 ```
 
-`data/sites.json` est créé tout seul. Ouvre `http://localhost:8787/?key=ta-clé`.
+`data/sites.json` is created for you. Open `http://localhost:8787/?key=your-key`.
 
-Docker :
+Docker:
 
 ```bash
 docker build -t gardeclic .
 docker run --rm -p 8787:8787 --env-file .env -v gardeclic-data:/app/data gardeclic
 ```
 
-Render / Railway / Fly : `Procfile` + `Dockerfile` sont prêts. Volume persistant sur `/app/data`.
+Render / Railway / Fly: `Procfile` and `Dockerfile` are ready. Persist a volume on `/app/data`.
 
-Sur chaque site :
+On each site:
 
 ```html
-<script src="https://TON-INSTANCE/s.js" data-site="site-1"></script>
+<script src="https://YOUR-INSTANCE/s.js" data-site="site-1"></script>
 ```
 
-`data-site` = l’`id` dans `sites.json`. Renseigne `customerId` et `campaignIds` pour la sync Ads.
+`data-site` is the `id` in `sites.json`. Set `customerId` and `campaignIds` if you want Ads sync.
 
-## Gratuit pour tout le monde
+## Free for everyone
 
-Licence MIT. Chacun tourne **sa** instance (VPS, Railway, Fly, un `node` sur un Raspberry). On ne vend pas de quota. Tes données restent chez toi (`data/` n’est pas commité).
+MIT license. Everyone runs **their own** instance (VPS, Railway, Fly, Node on a Pi). No quotas for sale. Your data stays on your disk (`data/` is not committed).
 
-## Ce que ça n’est pas
+## What it is not
 
-Pas un remplaçant magique de ClickCease, pas un bloqueur 4G grand public (une IP mobile partagée peut être un vrai client). Reste conservateur sur un métier local (serrurier, dépannage…).
+Not a magic ClickCease replacement, not a blunt 4G blocker (a shared mobile IP can be a real customer). Stay conservative on local trades (locksmith, emergency call-outs, and the like).
 
 ## Tests
 
