@@ -12,7 +12,8 @@ Tu héberges une instance. Tes sites envoient uniquement les **clics payants** (
    - `network_repeat` : la même IP clique **plusieurs de tes sites** (le cas concurrent / ferme)
    - `datacenter` : préfixes hébergeur, **off** par défaut (trop large)
 3. **Multi-sites** via `data/sites.json` (copie de `sites.example.json`).
-4. **Google Ads** optionnel : exclusions IP sur tes campagnes. Sans token, l’export CSV suffit.
+4. **Alerte admin** : un e-mail (Resend) et/ou un webhook dès qu’une **nouvelle** IP est flaggée — pas à chaque clic suivant. Sans `GARDECLIC_ALERT_EMAIL`, personne n’est prévenu : il faut ouvrir le tableau de bord.
+5. **Google Ads** optionnel : exclusions IP sur tes campagnes. Sans token, l’export CSV suffit.
 
 Google Ads **ne donne pas l’IP du clic**. D’où le petit collecteur sur tes landings. Plafond Google : 500 IP par campagne.
 

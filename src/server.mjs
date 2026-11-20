@@ -5,6 +5,7 @@ import {
   excludeIpOnCampaigns,
 } from "./ads.mjs";
 import { loadEnv } from "./env.mjs";
+import { notifyAdmin } from "./notify.mjs";
 import { evaluateHit } from "./rules.mjs";
 import {
   appendHit,
@@ -162,6 +163,24 @@ function dashboardPage(origin, keyQuery) {
 </html>`;
 }
 
+function dashboardLink(origin) {
+  const key = process.env.GARDECLIC_DASHBOARD_KEY;
+  if (!key) return origin;
+  return `${origin}/?key=${encodeURIComponent(key)}`;
+}
+
+async function alertIfNew(result, extra) {
+  if (!result.isNew && result.addedReasons.length === 0) return;
+  await notifyAdmin({
+    ip: result.block.ip,
+    site: extra.site,
+    host: extra.host,
+    reasons: result.isNew ? result.block.reasons : result.addedReasons,
+    paidCount: extra.paidCount,
+    dashboardUrl: extra.dashboardUrl,
+  }).catch(() => {});
+}
+
 function ruleOptions() {
   return {
     windowMs: Number(process.env.GARDECLIC_WINDOW_HOURS ?? 24) * 60 * 60 * 1000,
@@ -231,7 +250,7 @@ const server = createServer(async (req, res) => {
       const verdict = evaluateHit(hit, [...hits, hit], ruleOptions());
       await appendHit(hit);
       if (verdict.flagged) {
-        const block = await upsertBlock({
+        const result = await upsertBlock({
           ip: hit.ip,
           customerId: site.customerId || "",
           campaignIds: site.campaignIds || [],
@@ -240,6 +259,12 @@ const server = createServer(async (req, res) => {
           updatedAt: new Date().toISOString(),
           synced: false,
         });
+        await alertIfNew(result, {
+          site: site.id,
+          host: site.host,
+          paidCount: verdict.paidCount,
+          dashboardUrl: dashboardLink(origin),
+        });
         if (adsConfigured() && site.customerId && site.campaignIds?.length) {
           const sync = await excludeIpOnCampaigns({
             customerId: site.customerId,
@@ -247,7 +272,11 @@ const server = createServer(async (req, res) => {
             ip: hit.ip,
           });
           if (!sync.skipped) {
-            await upsertBlock({ ...block, synced: true, updatedAt: new Date().toISOString() });
+            await upsertBlock({
+              ...result.block,
+              synced: true,
+              updatedAt: new Date().toISOString(),
+            });
           }
         }
       }
@@ -292,7 +321,7 @@ const server = createServer(async (req, res) => {
       }
       const sites = await loadSites();
       const site = sites.find((row) => row.id === payload.site) ?? sites[0];
-      const block = await upsertBlock({
+      const result = await upsertBlock({
         ip,
         customerId: site?.customerId || "",
         campaignIds: site?.campaignIds || [],
@@ -301,6 +330,11 @@ const server = createServer(async (req, res) => {
         updatedAt: new Date().toISOString(),
         synced: false,
       });
+      await alertIfNew(result, {
+        site: site?.id,
+        host: site?.host,
+        dashboardUrl: dashboardLink(origin),
+      });
       if (adsConfigured() && site?.customerId && site.campaignIds?.length) {
         const sync = await excludeIpOnCampaigns({
           customerId: site.customerId,
@@ -308,7 +342,11 @@ const server = createServer(async (req, res) => {
           ip,
         });
         if (!sync.skipped) {
-          await upsertBlock({ ...block, synced: true, updatedAt: new Date().toISOString() });
+          await upsertBlock({
+            ...result.block,
+            synced: true,
+            updatedAt: new Date().toISOString(),
+          });
         }
       }
       json(res, 201, { ok: true });

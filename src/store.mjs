@@ -66,15 +66,25 @@ export async function upsertBlock(entry) {
     (row) => row.ip === entry.ip && row.customerId === entry.customerId,
   );
   if (existing) {
-    existing.reasons = [...new Set([...(existing.reasons ?? []), ...entry.reasons])];
-    existing.sites = [...new Set([...(existing.sites ?? []), ...entry.sites])];
+    const before = new Set(existing.reasons ?? []);
+    existing.reasons = [...new Set([...(existing.reasons ?? []), ...(entry.reasons ?? [])])];
+    existing.sites = [...new Set([...(existing.sites ?? []), ...(entry.sites ?? [])])];
     existing.updatedAt = entry.updatedAt;
     existing.synced = Boolean(entry.synced) || Boolean(existing.synced);
-  } else {
-    blocks.push(entry);
+    await saveBlocks(blocks);
+    return {
+      block: existing,
+      isNew: false,
+      addedReasons: existing.reasons.filter((reason) => !before.has(reason)),
+    };
   }
+  blocks.push(entry);
   await saveBlocks(blocks);
-  return existing ?? entry;
+  return {
+    block: entry,
+    isNew: true,
+    addedReasons: entry.reasons ?? [],
+  };
 }
 
 export async function pruneHits(maxAgeMs) {
