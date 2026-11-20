@@ -19,12 +19,20 @@ Google Ads **ne donne pas l’IP du clic**. D’où le petit collecteur sur tes 
 ## Lancer
 
 ```bash
-cp sites.example.json data/sites.json   # créé tout seul au premier start
 cp .env.example .env
 npm start
 ```
 
-Ouvre `http://localhost:8787/?key=ta-clé`.
+`data/sites.json` est créé tout seul. Ouvre `http://localhost:8787/?key=ta-clé`.
+
+Docker :
+
+```bash
+docker build -t gardeclic .
+docker run --rm -p 8787:8787 --env-file .env -v gardeclic-data:/app/data gardeclic
+```
+
+Render / Railway / Fly : `Procfile` + `Dockerfile` sont prêts. Volume persistant sur `/app/data`.
 
 Sur chaque site :
 

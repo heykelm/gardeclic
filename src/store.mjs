@@ -69,10 +69,19 @@ export async function upsertBlock(entry) {
     existing.reasons = [...new Set([...(existing.reasons ?? []), ...entry.reasons])];
     existing.sites = [...new Set([...(existing.sites ?? []), ...entry.sites])];
     existing.updatedAt = entry.updatedAt;
-    existing.synced = existing.synced && entry.synced;
+    existing.synced = Boolean(entry.synced) || Boolean(existing.synced);
   } else {
     blocks.push(entry);
   }
   await saveBlocks(blocks);
   return existing ?? entry;
+}
+
+export async function pruneHits(maxAgeMs) {
+  const hits = await loadHits();
+  const cutoff = Date.now() - maxAgeMs;
+  const kept = hits.filter((row) => Number(row.at) >= cutoff);
+  if (kept.length === hits.length) return hits.length;
+  await writeFile(HITS, kept.map((row) => JSON.stringify(row)).join("\n") + (kept.length ? "\n" : ""));
+  return kept.length;
 }

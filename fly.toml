@@ -1,0 +1,15 @@
+app = "gardeclic"
+primary_region = "cdg"
+
+[build]
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[mounts]]
+  source = "gardeclic_data"
+  destination = "/app/data"

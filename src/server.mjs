@@ -4,6 +4,7 @@ import {
   adsConfigured,
   excludeIpOnCampaigns,
 } from "./ads.mjs";
+import { loadEnv } from "./env.mjs";
 import { evaluateHit } from "./rules.mjs";
 import {
   appendHit,
@@ -11,10 +12,14 @@ import {
   loadBlocks,
   loadHits,
   loadSites,
+  pruneHits,
   upsertBlock,
 } from "./store.mjs";
 
+loadEnv();
+
 const PORT = Number(process.env.PORT ?? 8787);
+const RETENTION_DAYS = Number(process.env.GARDECLIC_RETENTION_DAYS ?? 30);
 
 function json(res, status, body) {
   res.writeHead(status, {
@@ -59,14 +64,13 @@ function authorized(req, url) {
   return url.searchParams.get("key") === key;
 }
 
-function snippet(origin) {
+function snippet(origin, siteFromQuery) {
   return `/*! GardeClic — first-party paid-click beacon. No fingerprinting. */
 (function () {
-  var script = document.currentScript;
-  if (!script) return;
-  var site = script.getAttribute("data-site");
+  var script = document.currentScript || document.querySelector('script[src*="/s.js"]');
+  var site = ${JSON.stringify(siteFromQuery || "")} || (script && script.getAttribute("data-site"));
   if (!site) return;
-  var base = script.src.replace(/\\/s\\.js(\\?.*)?$/, "");
+  var base = (script && script.src) ? script.src.replace(/\\/s\\.js(\\?.*)?$/, "") : ${JSON.stringify(origin)};
   var params = new URLSearchParams(location.search);
   var gclid = params.get("gclid") || params.get("gbraid") || params.get("wbraid") || "";
   if (!gclid) return;
@@ -110,7 +114,15 @@ function dashboardPage(origin, keyQuery) {
   <h1>GardeClic</h1>
   <p class="muted">Règles lisibles · plusieurs sites · pas un clone ClickCease.</p>
   <p>Snippet : <code>&lt;script src="${origin}/s.js" data-site="TON_ID"&gt;&lt;/script&gt;</code></p>
-  <p><a href="/export.csv${keyQuery}">Export CSV des IP</a></p>
+  <p><a href="/export.csv${keyQuery}">Export CSV des IP</a>
+    · <a href="/api/sync${keyQuery}" id="sync">Sync Ads</a></p>
+  <form id="manual" style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+    <input name="ip" placeholder="IP à exclure" required
+      style="padding:.4rem .6rem;border-radius:6px;border:1px solid #2a2f3a;background:#1a1f29;color:#ececec" />
+    <input name="site" placeholder="id site (ex. serru24)"
+      style="padding:.4rem .6rem;border-radius:6px;border:1px solid #2a2f3a;background:#1a1f29;color:#ececec" />
+    <button type="submit" style="padding:.4rem .8rem;border-radius:6px;border:0;background:#ececec;color:#0f1115;font-weight:600">Exclure</button>
+  </form>
   <h2>Sites</h2>
   <table id="sites"><thead><tr><th>id</th><th>host</th><th>Ads</th></tr></thead><tbody></tbody></table>
   <h2>Exclusions</h2>
@@ -128,6 +140,22 @@ function dashboardPage(origin, keyQuery) {
         "<tr><td>" + b.ip + "</td><td>" + (b.reasons || []).join(", ") + "</td><td>" +
         (b.sites || []).join(", ") + "</td><td>" + (b.synced ? "oui" : "non") + "</td></tr>"
       ).join("") || "<tr><td colspan=4 class=muted>Aucune exclusion pour l’instant.</td></tr>";
+    });
+    document.getElementById("manual").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(event.target);
+      const res = await fetch("/api/blocks" + q, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip: data.get("ip"), site: data.get("site") })
+      });
+      if (res.ok) location.reload();
+      else alert("Exclusion refusée");
+    });
+    document.getElementById("sync").addEventListener("click", async (event) => {
+      event.preventDefault();
+      await fetch("/api/sync" + q, { method: "POST" });
+      location.reload();
     });
   </script>
 </body>
@@ -159,8 +187,18 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (url.pathname === "/health") {
+      json(res, 200, { ok: true, ads: adsConfigured() });
+      return;
+    }
+
     if (url.pathname === "/s.js") {
-      text(res, 200, snippet(origin), "application/javascript; charset=utf-8");
+      text(
+        res,
+        200,
+        snippet(origin, url.searchParams.get("site") ?? ""),
+        "application/javascript; charset=utf-8",
+      );
       return;
     }
 
@@ -188,6 +226,7 @@ const server = createServer(async (req, res) => {
         gclid: String(payload.gclid ?? "").slice(0, 200),
         href: String(payload.href ?? "").slice(0, 500),
       };
+      await pruneHits(RETENTION_DAYS * 24 * 60 * 60 * 1000);
       const hits = await loadHits();
       const verdict = evaluateHit(hit, [...hits, hit], ruleOptions());
       await appendHit(hit);
@@ -237,8 +276,76 @@ const server = createServer(async (req, res) => {
       json(res, 200, await loadSites());
       return;
     }
+    if (url.pathname === "/api/blocks" && req.method === "POST") {
+      const raw = await readBody(req);
+      let payload = {};
+      try {
+        payload = JSON.parse(raw || "{}");
+      } catch {
+        json(res, 400, { error: "invalid_json" });
+        return;
+      }
+      const ip = String(payload.ip ?? "").trim();
+      if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip)) {
+        json(res, 400, { error: "invalid_ip" });
+        return;
+      }
+      const sites = await loadSites();
+      const site = sites.find((row) => row.id === payload.site) ?? sites[0];
+      const block = await upsertBlock({
+        ip,
+        customerId: site?.customerId || "",
+        campaignIds: site?.campaignIds || [],
+        reasons: ["manual"],
+        sites: site ? [site.id] : [],
+        updatedAt: new Date().toISOString(),
+        synced: false,
+      });
+      if (adsConfigured() && site?.customerId && site.campaignIds?.length) {
+        const sync = await excludeIpOnCampaigns({
+          customerId: site.customerId,
+          campaignIds: site.campaignIds,
+          ip,
+        });
+        if (!sync.skipped) {
+          await upsertBlock({ ...block, synced: true, updatedAt: new Date().toISOString() });
+        }
+      }
+      json(res, 201, { ok: true });
+      return;
+    }
+
     if (url.pathname === "/api/blocks") {
       json(res, 200, await loadBlocks());
+      return;
+    }
+
+    if (url.pathname === "/api/sync" && req.method === "POST") {
+      if (!adsConfigured()) {
+        json(res, 400, { error: "ads_not_configured" });
+        return;
+      }
+      const sites = await loadSites();
+      const blocks = await loadBlocks();
+      const results = [];
+      for (const block of blocks) {
+        if (block.synced) continue;
+        const site =
+          sites.find((row) => row.customerId === block.customerId) ??
+          sites.find((row) => (block.sites || []).includes(row.id));
+        if (!site?.customerId || !site.campaignIds?.length) continue;
+        const sync = await excludeIpOnCampaigns({
+          customerId: site.customerId,
+          campaignIds: site.campaignIds,
+          ip: block.ip,
+        });
+        const ok = !sync.skipped && sync.results?.every((row) => row.status < 300);
+        if (ok) {
+          await upsertBlock({ ...block, synced: true, updatedAt: new Date().toISOString() });
+        }
+        results.push({ ip: block.ip, ok });
+      }
+      json(res, 200, { results });
       return;
     }
     if (url.pathname === "/api/hits") {
@@ -266,6 +373,6 @@ const server = createServer(async (req, res) => {
 });
 
 await ensureData();
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`GardeClic http://localhost:${PORT}`);
 });
