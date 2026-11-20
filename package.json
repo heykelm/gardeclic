@@ -1,0 +1,15 @@
+{
+  "name": "gardeclic",
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "description": "GardeClic — exclusions IP Google Ads, règles lisibles, plusieurs sites. Self-host, gratuit.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test tests/*.test.mjs"
+  }
+}
