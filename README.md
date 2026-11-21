@@ -22,6 +22,41 @@ Rules live in `src/rules.mjs`. Each one has a name you can turn off in `.env`.
 
 Add extra hosting/VPN CIDRs in `data/hosting.cidrs` (see `hosting.cidrs.example`). This is a public-range heuristic, not a commercial IP-intel feed.
 
+## MCP (agent installs it for you)
+
+GardeClic is an MCP server. In Cursor, an agent that does not know Ads can still:
+
+- `gardeclic_setup` — `.env`, `data/`, `.cursor/mcp.json`, optional snippet on a Next/HTML site
+- `gardeclic_add_site` — id, host, Google Ads customer + campaigns
+- `gardeclic_set_alerts` — Resend email and/or webhook
+- `gardeclic_status` / `gardeclic_diagnose` — what is missing
+- `gardeclic_list_hits` / `gardeclic_list_blocks` / `gardeclic_exclude_ip` / `gardeclic_sync_ads`
+- `gardeclic_install_snippet` — patch `layout.tsx` or `index.html`
+
+```bash
+node src/cli.mjs init
+node src/cli.mjs serve
+```
+
+Or from another repo, after clone:
+
+```json
+{
+  "mcpServers": {
+    "gardeclic": {
+      "command": "node",
+      "args": ["/ABS/PATH/TO/gardeclic/src/mcp.mjs"],
+      "env": {
+        "GARDECLIC_HOME": "/ABS/PATH/TO/gardeclic",
+        "GARDECLIC_PROJECT": "/ABS/PATH/TO/the-site-repo"
+      }
+    }
+  }
+}
+```
+
+See `mcp.example.json`. The collector stays HTTP (`/s.js` + `/collect`): browsers cannot speak MCP. The MCP talks to the same `data/` folder.
+
 ## Run it
 
 ```bash

@@ -4,6 +4,7 @@ import {
   adsConfigured,
   excludeIpOnCampaigns,
 } from "./ads.mjs";
+import { enabledRuleNames, ruleOptions } from "./config.mjs";
 import { loadEnv } from "./env.mjs";
 import { notifyAdmin } from "./notify.mjs";
 import { evaluateHit } from "./rules.mjs";
@@ -11,12 +12,13 @@ import {
   appendHit,
   ensureData,
   loadBlocks,
-  loadExtraCidrs,
   loadHits,
   loadSites,
   pruneHits,
   upsertBlock,
+  upsertSite,
 } from "./store.mjs";
+import { syncPendingBlocks } from "./sync.mjs";
 
 loadEnv();
 
@@ -193,39 +195,6 @@ async function alertIfNew(result, extra) {
   }).catch(() => {});
 }
 
-function envOn(name, defaultOn = true) {
-  const value = process.env[name];
-  if (value == null || value === "") return defaultOn;
-  return value !== "0" && value !== "false";
-}
-
-async function ruleOptions() {
-  return {
-    windowMs: Number(process.env.GARDECLIC_WINDOW_HOURS ?? 24) * 60 * 60 * 1000,
-    repeatLimit: Number(process.env.GARDECLIC_REPEAT_LIMIT ?? 4),
-    networkSites: Number(process.env.GARDECLIC_NETWORK_SITES ?? 2),
-    burstLimit: Number(process.env.GARDECLIC_BURST_LIMIT ?? 3),
-    burstMs: Number(process.env.GARDECLIC_BURST_SECONDS ?? 120) * 1000,
-    uaChurnLimit: Number(process.env.GARDECLIC_UA_CHURN ?? 4),
-    useBurst: envOn("GARDECLIC_BURST"),
-    useClickIdReuse: envOn("GARDECLIC_CLICK_ID_REUSE"),
-    useBotUa: envOn("GARDECLIC_BOT_UA"),
-    useHosting: envOn("GARDECLIC_HOSTING") && process.env.GARDECLIC_DATACENTER !== "0",
-    useUaChurn: envOn("GARDECLIC_UA_CHURN_ON"),
-    extraCidrs: await loadExtraCidrs(),
-  };
-}
-
-function enabledRuleNames(opts) {
-  const names = ["repeat_paid", "network_repeat"];
-  if (opts.useBurst) names.push("burst");
-  if (opts.useClickIdReuse) names.push("click_id_reuse");
-  if (opts.useBotUa) names.push("bot_ua");
-  if (opts.useHosting) names.push("hosting");
-  if (opts.useUaChurn) names.push("ua_churn");
-  return names;
-}
-
 const server = createServer(async (req, res) => {
   try {
     await ensureData();
@@ -339,6 +308,22 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (url.pathname === "/api/sites" && req.method === "POST") {
+      const raw = await readBody(req);
+      let payload = {};
+      try {
+        payload = JSON.parse(raw || "{}");
+      } catch {
+        json(res, 400, { error: "invalid_json" });
+        return;
+      }
+      try {
+        json(res, 201, await upsertSite(payload));
+      } catch (error) {
+        json(res, 400, { error: String(error.message ?? error) });
+      }
+      return;
+    }
     if (url.pathname === "/api/sites") {
       json(res, 200, await loadSites());
       return;
@@ -405,31 +390,12 @@ const server = createServer(async (req, res) => {
     }
 
     if (url.pathname === "/api/sync" && req.method === "POST") {
-      if (!adsConfigured()) {
-        json(res, 400, { error: "ads_not_configured" });
+      const synced = await syncPendingBlocks();
+      if (synced.error) {
+        json(res, 400, synced);
         return;
       }
-      const sites = await loadSites();
-      const blocks = await loadBlocks();
-      const results = [];
-      for (const block of blocks) {
-        if (block.synced) continue;
-        const site =
-          sites.find((row) => row.customerId === block.customerId) ??
-          sites.find((row) => (block.sites || []).includes(row.id));
-        if (!site?.customerId || !site.campaignIds?.length) continue;
-        const sync = await excludeIpOnCampaigns({
-          customerId: site.customerId,
-          campaignIds: site.campaignIds,
-          ip: block.ip,
-        });
-        const ok = !sync.skipped && sync.results?.every((row) => row.status < 300);
-        if (ok) {
-          await upsertBlock({ ...block, synced: true, updatedAt: new Date().toISOString() });
-        }
-        results.push({ ip: block.ip, ok });
-      }
-      json(res, 200, { results });
+      json(res, 200, synced);
       return;
     }
     if (url.pathname === "/api/hits") {

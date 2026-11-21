@@ -1,14 +1,7 @@
 import { readFileSync } from "node:fs";
-import path from "node:path";
+import { envFile } from "./paths.mjs";
 
-export function loadEnv() {
-  const file = path.join(process.cwd(), ".env");
-  let raw = "";
-  try {
-    raw = readFileSync(file, "utf8");
-  } catch {
-    return;
-  }
+export function applyEnvText(raw) {
   for (const line of raw.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
@@ -23,5 +16,13 @@ export function loadEnv() {
       value = value.slice(1, -1);
     }
     if (process.env[key] == null) process.env[key] = value;
+  }
+}
+
+export function loadEnv() {
+  try {
+    applyEnvText(readFileSync(envFile(), "utf8"));
+  } catch {
+    /* no .env yet */
   }
 }

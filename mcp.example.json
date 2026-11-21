@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "gardeclic": {
+      "command": "node",
+      "args": ["/ABS/PATH/TO/gardeclic/src/mcp.mjs"],
+      "env": {
+        "GARDECLIC_HOME": "/ABS/PATH/TO/gardeclic",
+        "GARDECLIC_PROJECT": "/ABS/PATH/TO/the-site-repo"
+      }
+    }
+  }
+}

@@ -1,43 +1,83 @@
 import { mkdir, readFile, writeFile, appendFile } from "node:fs/promises";
 import path from "node:path";
+import { dataDir, packageRoot } from "./paths.mjs";
 
-const ROOT = process.cwd();
-const DATA = path.join(ROOT, "data");
-const HITS = path.join(DATA, "hits.jsonl");
-const BLOCKS = path.join(DATA, "blocks.json");
-const SITES = path.join(DATA, "sites.json");
+function hitsPath() {
+  return path.join(dataDir(), "hits.jsonl");
+}
+function blocksPath() {
+  return path.join(dataDir(), "blocks.json");
+}
+function sitesPath() {
+  return path.join(dataDir(), "sites.json");
+}
 
 export async function ensureData() {
-  await mkdir(DATA, { recursive: true });
+  await mkdir(dataDir(), { recursive: true });
   try {
-    await readFile(SITES, "utf8");
+    await readFile(sitesPath(), "utf8");
   } catch {
-    const example = await readFile(path.join(ROOT, "sites.example.json"), "utf8");
-    await writeFile(SITES, example);
+    const example = await readFile(path.join(packageRoot(), "sites.example.json"), "utf8");
+    await writeFile(sitesPath(), example);
   }
   try {
-    await readFile(BLOCKS, "utf8");
+    await readFile(blocksPath(), "utf8");
   } catch {
-    await writeFile(BLOCKS, "[]\n");
+    await writeFile(blocksPath(), "[]\n");
   }
   try {
-    await readFile(HITS, "utf8");
+    await readFile(hitsPath(), "utf8");
   } catch {
-    await writeFile(HITS, "");
+    await writeFile(hitsPath(), "");
   }
 }
 
 export async function loadSites() {
-  const raw = JSON.parse(await readFile(SITES, "utf8"));
+  const raw = JSON.parse(await readFile(sitesPath(), "utf8"));
   return Array.isArray(raw.sites) ? raw.sites : [];
 }
 
+export async function saveSites(sites) {
+  await writeFile(sitesPath(), `${JSON.stringify({ sites }, null, 2)}\n`);
+}
+
+export async function upsertSite(entry) {
+  await ensureData();
+  const id = String(entry.id ?? "").trim();
+  if (!id) throw new Error("site id required");
+  const sites = await loadSites();
+  const campaignIds = Array.isArray(entry.campaignIds)
+    ? entry.campaignIds.map(String).filter(Boolean)
+    : [];
+  const next = {
+    id,
+    host: String(entry.host ?? "").trim(),
+    customerId: String(entry.customerId ?? "").replace(/-/g, ""),
+    campaignIds,
+  };
+  const index = sites.findIndex((row) => row.id === id);
+  if (index >= 0) {
+    const prev = sites[index];
+    sites[index] = {
+      ...prev,
+      ...next,
+      host: next.host || prev.host,
+      customerId: next.customerId || prev.customerId,
+      campaignIds: campaignIds.length ? campaignIds : prev.campaignIds || [],
+    };
+  } else {
+    sites.push(next);
+  }
+  await saveSites(sites);
+  return sites.find((row) => row.id === id);
+}
+
 export async function appendHit(hit) {
-  await appendFile(HITS, `${JSON.stringify(hit)}\n`);
+  await appendFile(hitsPath(), `${JSON.stringify(hit)}\n`);
 }
 
 export async function loadHits() {
-  const raw = await readFile(HITS, "utf8");
+  const raw = await readFile(hitsPath(), "utf8");
   if (!raw.trim()) return [];
   return raw
     .trim()
@@ -53,11 +93,11 @@ export async function loadHits() {
 }
 
 export async function loadBlocks() {
-  return JSON.parse(await readFile(BLOCKS, "utf8"));
+  return JSON.parse(await readFile(blocksPath(), "utf8"));
 }
 
 export async function saveBlocks(blocks) {
-  await writeFile(BLOCKS, `${JSON.stringify(blocks, null, 2)}\n`);
+  await writeFile(blocksPath(), `${JSON.stringify(blocks, null, 2)}\n`);
 }
 
 export async function upsertBlock(entry) {
@@ -89,7 +129,7 @@ export async function upsertBlock(entry) {
 
 export async function loadExtraCidrs() {
   try {
-    const raw = await readFile(path.join(DATA, "hosting.cidrs"), "utf8");
+    const raw = await readFile(path.join(dataDir(), "hosting.cidrs"), "utf8");
     return raw
       .split("\n")
       .map((line) => line.trim())
@@ -104,6 +144,9 @@ export async function pruneHits(maxAgeMs) {
   const cutoff = Date.now() - maxAgeMs;
   const kept = hits.filter((row) => Number(row.at) >= cutoff);
   if (kept.length === hits.length) return hits.length;
-  await writeFile(HITS, kept.map((row) => JSON.stringify(row)).join("\n") + (kept.length ? "\n" : ""));
+  await writeFile(
+    hitsPath(),
+    kept.map((row) => JSON.stringify(row)).join("\n") + (kept.length ? "\n" : ""),
+  );
   return kept.length;
 }
