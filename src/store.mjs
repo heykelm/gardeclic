@@ -9,7 +9,9 @@ export function kvConfigured() {
 }
 
 export function storeName() {
-  return kvConfigured() ? "kv" : "file";
+  if (kvConfigured()) return "kv";
+  if (process.env.VERCEL) return "file-ephemeral";
+  return "file";
 }
 
 function backend() {

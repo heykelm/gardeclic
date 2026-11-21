@@ -219,7 +219,6 @@ async function alertIfNew(result, extra) {
 
 export async function handleRequest(req, res) {
   try {
-    await ensureData();
     const url = incomingUrl(req);
     const origin = `${url.protocol}//${url.host}`;
 
@@ -247,6 +246,8 @@ export async function handleRequest(req, res) {
       );
       return;
     }
+
+    await ensureData();
 
     if (url.pathname === "/collect" && req.method === "POST") {
       const raw = await readBody(req);
