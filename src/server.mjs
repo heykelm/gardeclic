@@ -15,6 +15,7 @@ import {
   loadHits,
   loadSites,
   pruneHits,
+  storeName,
   upsertBlock,
   upsertSite,
 } from "./store.mjs";
@@ -183,6 +184,27 @@ function dashboardLink(origin) {
   return `${origin}/?key=${encodeURIComponent(key)}`;
 }
 
+export function incomingUrl(req) {
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "localhost")
+    .split(",")[0]
+    .trim();
+  const proto = String(req.headers["x-forwarded-proto"] || (process.env.VERCEL ? "https" : "http"))
+    .split(",")[0]
+    .trim();
+  const url = new URL(req.url ?? "/", `${proto}://${host}`);
+  const injected = url.searchParams.get("__path");
+  if (injected) {
+    url.searchParams.delete("__path");
+    const next = new URL(injected, url.origin);
+    next.search = url.search;
+    return next;
+  }
+  if (url.pathname === "/api/index" || url.pathname === "/api") {
+    return new URL("/", url.origin);
+  }
+  return url;
+}
+
 async function alertIfNew(result, extra) {
   if (!result.isNew && result.addedReasons.length === 0) return;
   await notifyAdmin({
@@ -195,10 +217,10 @@ async function alertIfNew(result, extra) {
   }).catch(() => {});
 }
 
-const server = createServer(async (req, res) => {
+export async function handleRequest(req, res) {
   try {
     await ensureData();
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const url = incomingUrl(req);
     const origin = `${url.protocol}//${url.host}`;
 
     if (req.method === "OPTIONS") {
@@ -212,7 +234,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (url.pathname === "/health") {
-      json(res, 200, { ok: true, ads: adsConfigured() });
+      json(res, 200, { ok: true, ads: adsConfigured(), store: storeName() });
       return;
     }
 
@@ -420,9 +442,16 @@ const server = createServer(async (req, res) => {
   } catch (error) {
     json(res, 500, { error: "server_error", message: String(error.message ?? error) });
   }
+}
+
+const server = createServer((req, res) => {
+  handleRequest(req, res);
 });
 
-await ensureData();
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`GardeClic http://localhost:${PORT}`);
-});
+const isMain = process.argv[1]?.replace(/\\/g, "/").endsWith("/server.mjs");
+if (isMain && !process.env.VERCEL) {
+  await ensureData();
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`GardeClic http://localhost:${PORT}`);
+  });
+}

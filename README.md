@@ -57,13 +57,27 @@ Or from another repo, after clone:
 
 `gardeclic_setup` also registers the server in your user Cursor config (`~/.cursor/mcp.json`). Reload the window once. See `mcp.example.json`.
 
-The collector stays HTTP (`/s.js` + `/collect`): browsers cannot speak MCP. The MCP talks to the same `data/` folder.
+The collector stays HTTP (`/s.js` + `/collect`): browsers cannot speak MCP. The MCP talks to the same store as the collector.
+
+## Deploy on Vercel
+
+Vercel has no persistent disk. Pair the project with **Vercel KV** (Upstash) so hits and IP blocks survive.
 
 ```bash
-docker compose up --build -d
+vercel --prod
 ```
 
-## Run it
+Then in the Vercel project: Storage → Create KV Database → connect it (injects `KV_REST_API_URL` / `KV_REST_API_TOKEN`). Set `GARDECLIC_DASHBOARD_KEY`, optional `GARDECLIC_ALERT_EMAIL` + `RESEND_API_KEY`, and `GARDECLIC_PUBLIC_ORIGIN=https://<your-app>.vercel.app`.
+
+Landing pages load:
+
+```html
+<script src="https://<your-app>.vercel.app/s.js" data-site="rideup"></script>
+```
+
+Local and Docker still use `data/` files.
+
+## Run it locally
 
 ```bash
 cp .env.example .env

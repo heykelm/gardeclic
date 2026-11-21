@@ -36,5 +36,8 @@ export function enabledRuleNames(opts) {
 export function publicOrigin() {
   const raw = process.env.GARDECLIC_PUBLIC_ORIGIN;
   if (raw) return raw.replace(/\/$/, "");
+  const prod = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (prod) return `https://${prod.replace(/^https?:\/\//, "")}`;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return `http://localhost:${process.env.PORT ?? 8787}`;
 }

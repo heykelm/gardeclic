@@ -6,3 +6,4 @@ data/
 *.log
 .cursor/
 tmp-test-*
+.vercel

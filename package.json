@@ -22,6 +22,8 @@
     ".env.example",
     "hosting.cidrs.example",
     "mcp.example.json",
+    "vercel.json",
+    "api",
     "docker-compose.yml",
     "README.md",
     "LICENSE",

@@ -18,7 +18,16 @@ if (command === "mcp") {
   console.log(result.content[0].text);
 } else if (command === "serve" || command === "start") {
   loadEnv();
-  await import("./server.mjs");
+  const { createServer } = await import("node:http");
+  const { handleRequest } = await import("./server.mjs");
+  const { ensureData } = await import("./store.mjs");
+  await ensureData();
+  const port = Number(process.env.PORT ?? 8787);
+  createServer((req, res) => {
+    handleRequest(req, res);
+  }).listen(port, "0.0.0.0", () => {
+    console.log(`GardeClic http://localhost:${port}`);
+  });
 } else {
   console.error(`Usage:
   gardeclic init [project] [--snippet] [--site id]
