@@ -10,6 +10,7 @@ async function tmpHome() {
   const dir = await mkdtemp(path.join(packageRoot(), "tmp-test-"));
   process.env.GARDECLIC_HOME = dir;
   process.env.GARDECLIC_PROJECT = dir;
+  process.env.GARDECLIC_SKIP_USER_MCP = "1";
   delete process.env.GARDECLIC_DASHBOARD_KEY;
   delete process.env.GARDECLIC_PUBLIC_ORIGIN;
   return dir;
@@ -26,8 +27,14 @@ test("MCP layer", async (t) => {
   });
 
   await t.test("initialize and tools/list expose setup", async () => {
-    const init = await handleRpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
+    const init = await handleRpc({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { protocolVersion: "2025-06-18" },
+    });
     assert.equal(init.serverInfo.name, "gardeclic");
+    assert.equal(init.protocolVersion, "2025-06-18");
     const listed = await handleRpc({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     const names = listed.tools.map((row) => row.name);
     assert.ok(names.includes("gardeclic_setup"));

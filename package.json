@@ -22,6 +22,7 @@
     ".env.example",
     "hosting.cidrs.example",
     "mcp.example.json",
+    "docker-compose.yml",
     "README.md",
     "LICENSE",
     "Dockerfile",

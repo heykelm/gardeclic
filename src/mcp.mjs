@@ -10,7 +10,9 @@ import { TOOLS, callTool } from "./tools.mjs";
 loadEnv();
 
 const SERVER_INFO = { name: "gardeclic", version: "0.2.0" };
-const PROTOCOL = "2024-11-05";
+const PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
+const INSTRUCTIONS =
+  "GardeClic guards Google Ads click spend. Call gardeclic_setup first, then gardeclic_diagnose. The HTTP collector (/s.js) must be running for landing pages.";
 
 function respond(id, result) {
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
@@ -23,14 +25,21 @@ function respondError(id, code, message) {
 export async function handleRpc(message) {
   const { id, method, params } = message;
   if (method === "initialize") {
+    const requested = params?.protocolVersion;
     return {
-      protocolVersion: PROTOCOL,
+      protocolVersion: PROTOCOLS.has(requested) ? requested : "2024-11-05",
       capabilities: { tools: {} },
       serverInfo: SERVER_INFO,
+      instructions: INSTRUCTIONS,
     };
   }
-  if (method === "ping" || method === "notifications/initialized" || method === "notifications/cancelled") {
-    return method === "ping" ? {} : null;
+  if (
+    method === "ping" ||
+    method === "logging/setLevel" ||
+    method === "notifications/initialized" ||
+    method === "notifications/cancelled"
+  ) {
+    return method === "ping" || method === "logging/setLevel" ? {} : null;
   }
   if (method === "tools/list") {
     return {

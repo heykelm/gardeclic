@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { homedir } from "node:os";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { adsConfigured, excludeIpOnCampaigns } from "./ads.mjs";
@@ -29,9 +30,8 @@ function fail(message) {
 
 const IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 
-async function mergeCursorMcp(targetRoot, entry) {
+async function mergeMcpFile(file, entry, fallbackDir = path.dirname(file)) {
   const payload = { mcpServers: { gardeclic: entry } };
-  const file = path.join(targetRoot, ".cursor", "mcp.json");
   try {
     let current = { mcpServers: {} };
     try {
@@ -46,14 +46,19 @@ async function mergeCursorMcp(targetRoot, entry) {
     await writeFile(file, `${JSON.stringify(current, null, 2)}\n`);
     return { file, merged: true };
   } catch (error) {
-    const sidecar = path.join(targetRoot, "gardeclic.mcp.json");
+    await mkdir(fallbackDir, { recursive: true });
+    const sidecar = path.join(fallbackDir, "gardeclic.mcp.json");
     await writeFile(sidecar, `${JSON.stringify(payload, null, 2)}\n`);
     return {
       file: sidecar,
       merged: false,
-      reason: `could not write .cursor/mcp.json (${error.message}); wrote ${sidecar} instead`,
+      reason: `could not write ${file} (${error.message}); wrote ${sidecar} instead`,
     };
   }
+}
+
+function mergeCursorMcp(targetRoot, entry) {
+  return mergeMcpFile(path.join(targetRoot, ".cursor", "mcp.json"), entry, targetRoot);
 }
 
 export async function setup(args = {}) {
@@ -74,7 +79,8 @@ export async function setup(args = {}) {
   }
   await ensureData();
   const mcpEntry = {
-    command: "node",
+    type: "stdio",
+    command: process.execPath,
     args: [path.join(packageRoot(), "src", "mcp.mjs")],
     env: {
       GARDECLIC_HOME: home,
@@ -84,6 +90,14 @@ export async function setup(args = {}) {
   const mcpHome = await mergeCursorMcp(home, mcpEntry);
   const mcpProject =
     path.resolve(project) === path.resolve(home) ? mcpHome : await mergeCursorMcp(project, mcpEntry);
+  let mcpUser = { skipped: true };
+  if (args.user_mcp !== false && process.env.GARDECLIC_SKIP_USER_MCP !== "1") {
+    mcpUser = await mergeMcpFile(
+      path.join(homedir(), ".cursor", "mcp.json"),
+      mcpEntry,
+      path.join(homedir(), ".cursor"),
+    );
+  }
   const detected = await detectProject(project);
   const origin = publicOrigin();
   const siteId = args.site_id || detected.name;
@@ -97,7 +111,7 @@ export async function setup(args = {}) {
     project,
     origin,
     dashboard: `${origin}/?key=${process.env.GARDECLIC_DASHBOARD_KEY || ""}`,
-    mcp: { home: mcpHome, project: mcpProject },
+    mcp: { home: mcpHome, project: mcpProject, user: mcpUser },
     detected,
     snippet: snippet.snippet,
     snippet_steps: snippet.steps,

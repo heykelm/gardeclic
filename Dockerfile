@@ -2,7 +2,7 @@ FROM node:22-alpine
 WORKDIR /app
 COPY package.json ./
 COPY src ./src
-COPY sites.example.json ./
+COPY sites.example.json .env.example hosting.cidrs.example ./
 COPY LICENSE README.md ./
 ENV NODE_ENV=production
 ENV PORT=8787

@@ -55,7 +55,13 @@ Or from another repo, after clone:
 }
 ```
 
-See `mcp.example.json`. The collector stays HTTP (`/s.js` + `/collect`): browsers cannot speak MCP. The MCP talks to the same `data/` folder.
+`gardeclic_setup` also registers the server in your user Cursor config (`~/.cursor/mcp.json`). Reload the window once. See `mcp.example.json`.
+
+The collector stays HTTP (`/s.js` + `/collect`): browsers cannot speak MCP. The MCP talks to the same `data/` folder.
+
+```bash
+docker compose up --build -d
+```
 
 ## Run it
 

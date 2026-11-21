@@ -1,6 +1,7 @@
 {
   "mcpServers": {
     "gardeclic": {
+      "type": "stdio",
       "command": "node",
       "args": ["/ABS/PATH/TO/gardeclic/src/mcp.mjs"],
       "env": {
